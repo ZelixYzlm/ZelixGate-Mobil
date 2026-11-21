@@ -64,7 +64,8 @@ Güncelleme adresi ayarlardan değiştirilebilir; varsayılan kaynak `https://ap
 - Ayarlar ve tanılama kayıtları cihazın yerel depolamasında tutulur.
 - Uygulama, reklam veya analiz SDK'sı içermez.
 - VPN tüneli cihaz üzerinde çalışır; trafik ZelixGate sunucularına gönderilmez.
-- Reklam engelleme listesi ve DoH sorguları dışında harici bir servise veri iletilmez.
+- Güncelleme kontrolü GitHub Releases API'sine, DoH sorguları seçtiğiniz DNS sağlayıcısına iletilir.
+- Reklam engelleme listesi cihazda tutulur; engelleme kayıtları dışarı gönderilmez.
 
 ## Derleme
 
