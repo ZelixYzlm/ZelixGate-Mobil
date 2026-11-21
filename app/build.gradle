@@ -1,0 +1,78 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// İmza bilgileri depoya eklenmez. Yerelde local.properties, CI'da ortam
+// değişkenleri kullanılır. Anahtar yoksa release APK imzasız üretilir.
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def zelixStoreFile = localProps.getProperty('zelix.storeFile') ?: System.getenv('ZELIX_STORE_FILE')
+def zelixStorePassword = localProps.getProperty('zelix.storePassword') ?: System.getenv('ZELIX_STORE_PASSWORD')
+def zelixKeyAlias = localProps.getProperty('zelix.keyAlias') ?: System.getenv('ZELIX_KEY_ALIAS')
+def zelixKeyPassword = localProps.getProperty('zelix.keyPassword') ?: System.getenv('ZELIX_KEY_PASSWORD')
+
+android {
+    namespace 'com.zelixsec.app'
+    compileSdk 34
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId "com.zelixsec.app"
+        minSdk 24
+        targetSdk 34
+        // versionCode, eski 1.0.9 (109) sürümünün üzerine kurulabilsin diye
+        // yüksek tutuldu; görünen sürüm PC ile aynı: 1.0.2.
+        versionCode 1020
+        versionName "1.0.2"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        release {
+            if (zelixStoreFile) {
+                storeFile rootProject.file(zelixStoreFile)
+                storePassword zelixStorePassword
+                keyAlias zelixKeyAlias
+                keyPassword zelixKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (zelixStoreFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path 'src/main/jni/Android.mk'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.9.25'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.webkit:webkit:1.8.0'
+}
