@@ -52,8 +52,15 @@ class SocksFrontend(
         private const val REP_SUCCESS = 0x00
         private const val REP_GENERAL_FAIL = 0x01
         private const val REP_HOST_UNREACHABLE = 0x04
+        private const val REP_CONNECTION_REFUSED = 0x05
         private const val REP_CMD_NOT_SUPPORTED = 0x07
         private const val REP_ATYP_NOT_SUPPORTED = 0x08
+
+        /**
+         * VPN'in sanal DNS adresi (ZelixVpnService.TUN_DNS).
+         * Gerçek ağda karşılığı yoktur; yalnızca 53/DoH sentezi için vardır.
+         */
+        private const val VIRTUAL_DNS_HOST = "198.18.0.2"
 
         private const val RELAY_IDLE_MS = 60_000L
         private const val SESSION_CLEAN_INTERVAL_MS = 1000L
@@ -327,7 +334,8 @@ class SocksFrontend(
             val lenBuf = ByteArray(2)
             while (readFully(input, lenBuf, 0, 2)) {
                 val n = ((lenBuf[0].toInt() and 0xff) shl 8) or (lenBuf[1].toInt() and 0xff)
-                if (n == 0 || n > 512) return
+                // EDNS0 sorguları 512 baytı aşabilir; 4096'ya kadar kabul et.
+                if (n == 0 || n > 4096) return
                 val query = ByteArray(n)
                 if (!readFully(input, query, 0, n)) return
                 rlLog("info", "[socks] DNS-over-TCP sorgusu: $n bayt")
@@ -346,6 +354,22 @@ class SocksFrontend(
     private fun handleConnect(client: Socket, output: OutputStream, target: Target) {
         val host = target.host
         val port = target.port
+
+        // Android, "Özel DNS (otomatik)" modunda VPN'in DNS sunucusuna
+        // 198.18.0.2:853 (DoT) ile bağlanmayı dener. Bu adres sanaldır ve
+        // gerçek ağda karşılığı yoktur; normal yola düşerse bağlantı 10 sn
+        // timeout'a takılır ve DNS çözümlemesi kilitlenir. Hemen reddet:
+        // Android bunun üzerine UDP/TCP 53'e, yani DoH sentezimize düşer.
+        if (port == 853 && host.trim() == VIRTUAL_DNS_HOST) {
+            rlLog(
+                "info",
+                "[socks] Sanal DNS'e DoT denemesi reddedildi (53/DoH'a düşülecek): $host:$port",
+            )
+            replyFailure(output, REP_CONNECTION_REFUSED)
+            closeQuiet(client)
+            return
+        }
+
         // IPv6 hedefleri bu ortamda çalışmıyor (BlueStacks/QEMU IPv6'da
         // 10 sn sonra ECONNREFUSED veriyor). Hemen başarısız dönelim ki
         // istemci (Chrome Happy Eyeballs) IPv4 A kaydına hızla düşsün.
@@ -375,9 +399,14 @@ class SocksFrontend(
             replyFailure(output, REP_GENERAL_FAIL)
             closeQuiet(client)
         } catch (err: Exception) {
+            val message = err.message ?: "bilinmeyen"
+            // Tünel kapatılırken açık soketlerin "Socket is closed" vermesi
+            // normaldir; bunu hata gibi göstermeyip hata ayıklama seviyesine indir.
+            val expectedOnShutdown =
+                !running.get() || message.contains("Socket closed", ignoreCase = true)
             logSink?.invoke(
-                "info",
-                "SOCKS CONNECT başarısız: $host:$port (${err.message ?: "bilinmeyen"})",
+                if (expectedOnShutdown) "debug" else "info",
+                "SOCKS CONNECT başarısız: $host:$port ($message)",
             )
             replyFailure(output, REP_GENERAL_FAIL)
             closeQuiet(client)
@@ -601,6 +630,8 @@ class SocksFrontend(
         val dstPort = ((frame[pos].toInt() and 0xff) shl 8) or (frame[pos + 1].toInt() and 0xff)
         pos += 2
         if (dstPort <= 0) return true
+        // Sanal DNS'e DoT/DoQ denemesi gerçek ağa çıkmasın; yanıt beklenmeden at.
+        if (dstPort == 853 && dstHost.trim() == VIRTUAL_DNS_HOST) return true
         // IPv6 UDP hedefleri kapalı (DNS'te AAAA verilmiyor; literal istekler atılır).
         if (dstHost.contains(':')) return true
         val payload = if (frame.size > pos) frame.copyOfRange(pos, frame.size) else ByteArray(0)

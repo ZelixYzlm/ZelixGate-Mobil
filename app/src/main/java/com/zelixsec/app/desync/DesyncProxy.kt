@@ -229,6 +229,11 @@ class DesyncProxy(options: JSONObject = JSONObject()) {
         doh.clearCache()
     }
 
+    /** Alt ağ değişiminde DoH önbelleğini ve sağlayıcı geri çekilmesini sıfırlar. */
+    fun onNetworkChanged() {
+        doh.onNetworkChanged()
+    }
+
     /* --------------------------------------------------------------- start */
 
     fun start(): JSONObject {

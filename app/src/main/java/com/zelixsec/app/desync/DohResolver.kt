@@ -237,6 +237,13 @@ class DohResolver(opts: Map<String, Any> = emptyMap()) {
     private val statsMisses = AtomicLong(0)
     private val statsErrors = AtomicLong(0)
 
+    /**
+     * DoH sağlayıcılarına erişilemediğinde her sorguda timeout yaşamamak için
+     * bu ana kadar sistem DNS'ine düşülür. Ağ değişiminde sıfırlanır.
+     */
+    @Volatile
+    private var dohBackoffUntil = 0L
+
     private class CacheEntry(val ips: List<String>, val expires: Long)
 
     fun configure(next: Map<String, Any> = emptyMap()) {
@@ -244,10 +251,18 @@ class DohResolver(opts: Map<String, Any> = emptyMap()) {
         (next["enabled"] as? Boolean)?.let { enabled = it }
         (next["allowSystemFallback"] as? Boolean)?.let { allowSystemFallback = it }
         (next["timeoutMs"] as? Number)?.let { timeoutMs = it.toInt() }
+        dohBackoffUntil = 0L
         synchronized(cache) { cache.clear() }
     }
 
     fun clearCache() {
+        dohBackoffUntil = 0L
+        synchronized(cache) { cache.clear() }
+    }
+
+    /** Wi-Fi ↔ mobil veri geçişinde eski ağın önbelleğini ve DoH geri çekilmesini temizler. */
+    fun onNetworkChanged() {
+        dohBackoffUntil = 0L
         synchronized(cache) { cache.clear() }
     }
 
@@ -256,6 +271,12 @@ class DohResolver(opts: Map<String, Any> = emptyMap()) {
     companion object {
         const val DEFAULT_TTL_MS: Long = 5 * 60 * 1000
         const val MIN_TTL_MS: Long = 30 * 1000
+
+        /** Tek bir DoH sağlayıcısı için üst sınır; yedeklerde hızlı dönmek için. */
+        private const val FALLBACK_TIMEOUT_MS: Int = 2_500
+
+        /** Tüm DoH sağlayıcıları başarısızsa sistem DNS'ine geçiş süresi. */
+        private const val DOH_BACKOFF_MS: Long = 60_000
     }
 
     /** Önbellekten taze kayıt döndürür veya null. */
@@ -282,54 +303,86 @@ class DohResolver(opts: Map<String, Any> = emptyMap()) {
     }
 
     private fun queryType(name: String, type: String): List<String> {
-        val key = "$name|$type"
         fromCache(name, type)?.let {
             return it
         }
         statsMisses.incrementAndGet()
 
         val entry = DohProviders.PROVIDERS[provider]
-        if (!(enabled) || entry?.get("system") == true) {
+        if (!enabled || entry?.get("system") == true) {
             return systemResolve(name, type)
         }
 
-        val json: JSONObject
-        try {
-            json = DohTls.queryJson(
-                entry?.get("hostname") as String,
-                entry?.get("ip") as String,
-                entry?.get("path") as String,
-                name,
-                type,
-                timeoutMs,
-            )
-        } catch (err: Exception) {
-            statsErrors.incrementAndGet()
-            if (allowSystemFallback) return systemResolve(name, type)
-            throw err
+        // Mobil veride bazı operatörler DoH IP'lerini engelliyor. Her sorguda
+        // timeout yaşamak yerine kısa bir süre sistem DNS'ine düşeriz; ağ
+        // değişince onNetworkChanged() bu geri çekilmeyi sıfırlar.
+        if (System.currentTimeMillis() < dohBackoffUntil) {
+            return systemResolve(name, type)
         }
 
+        val order = mutableListOf<String>()
+        order.add(provider)
+        for (candidate in listOf("cloudflare", "google", "quad9")) {
+            if (candidate != provider) order.add(candidate)
+        }
+
+        var lastError: Exception? = null
+        for (candidate in order) {
+            val cfg = DohProviders.PROVIDERS[candidate] ?: continue
+            if (cfg["system"] == true) continue
+            val hostname = cfg["hostname"] as? String ?: continue
+            val ip = cfg["ip"] as? String ?: continue
+            val path = cfg["path"] as? String ?: continue
+            try {
+                val json = DohTls.queryJson(
+                    hostname,
+                    ip,
+                    path,
+                    name,
+                    type,
+                    minOf(timeoutMs, FALLBACK_TIMEOUT_MS),
+                )
+                val ips = collectAnswers(json, type)
+                if (ips.isNotEmpty()) {
+                    store(name, type, ips, minTtlSeconds(json))
+                    dohBackoffUntil = 0L
+                    return ips
+                }
+                lastError = Exception("$name için $type kaydı bulunamadı")
+            } catch (err: Exception) {
+                lastError = err
+            }
+        }
+
+        statsErrors.incrementAndGet()
+        dohBackoffUntil = System.currentTimeMillis() + DOH_BACKOFF_MS
+        if (allowSystemFallback) return systemResolve(name, type)
+        throw lastError ?: Exception("$name için DoH çözümlemesi başarısız")
+    }
+
+    private fun collectAnswers(json: JSONObject, type: String): List<String> {
         val answers = json.optJSONArray("Answer") ?: org.json.JSONArray()
         // CNAME zincirini atlayıp istediğimiz tipteki kayıtları topla
         val wantType = if (type == "A") 1 else 28
         val ips = mutableListOf<String>()
-        var minTtl = 600
         for (i in 0 until answers.length()) {
             val a = answers.optJSONObject(i) ?: continue
-            if ((a.optInt("type", -1)) == wantType) {
+            if (a.optInt("type", -1) == wantType) {
                 val data = a.optString("data")
                 if (IpCheck.isIp(data)) ips.add(data)
             }
+        }
+        return ips
+    }
+
+    private fun minTtlSeconds(json: JSONObject): Int {
+        val answers = json.optJSONArray("Answer") ?: return 600
+        var minTtl = 600
+        for (i in 0 until answers.length()) {
+            val a = answers.optJSONObject(i) ?: continue
             minTtl = minOf(minTtl, if (a.has("TTL")) a.optInt("TTL", 60) else 60)
         }
-
-        if (ips.isEmpty()) {
-            if (allowSystemFallback) return systemResolve(name, type)
-            throw Exception("$name için $type kaydı bulunamadı")
-        }
-
-        store(name, type, ips, minTtl)
-        return ips
+        return minTtl
     }
 
     private fun systemResolve(name: String, type: String): List<String> {

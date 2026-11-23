@@ -3,6 +3,10 @@ package com.zelixsec.app.vpn
 import android.app.Notification
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -45,6 +49,10 @@ class ZelixVpnService : VpnService() {
 
     @Volatile
     private var tunnelUp = false
+
+    private var connectivity: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var lastUnderlyingNetwork: Network? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -107,6 +115,7 @@ class ZelixVpnService : VpnService() {
 
             tunnelUp = true
             ZelixRuntime.onVpnUp()
+            startNetworkMonitor()
             startHevMonitor()
             ZelixRuntime.pushLog(
                 "info",
@@ -121,6 +130,7 @@ class ZelixVpnService : VpnService() {
 
     /** TProxyStopService + tun kapanışı + SOCKS kapanışı; zaten kapalıysa sessiz. */
     private fun stopTunnel(clearVpnState: Boolean) {
+        stopNetworkMonitor()
         stopHevMonitor()
         try {
             if (tunnelUp) TProxyService.TProxyStopService()
@@ -254,6 +264,58 @@ class ZelixVpnService : VpnService() {
         val out = File(filesDir, "hev-tun.yml")
         out.writeText(yaml.toString())
         return out
+    }
+
+    /* ------------------------------------------------------- ağ izleyici */
+
+    /**
+     * Alt ağ (Wi-Fi ↔ mobil veri) değişimini izler. VPN tüneli ayakta kalır;
+     * yalnızca DNS önbelleği temizlenir. Böylece eski ağdan kalan ölü IP'ler
+     * yeni bağlantıları kilitlemez.
+     */
+    private fun startNetworkMonitor() {
+        if (networkCallback != null) return
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (lastUnderlyingNetwork != network) {
+                    lastUnderlyingNetwork = network
+                    ZelixRuntime.onUnderlyingNetworkChanged()
+                }
+            }
+
+            override fun onLost(network: Network) {
+                if (lastUnderlyingNetwork == network) {
+                    lastUnderlyingNetwork = null
+                    ZelixRuntime.onUnderlyingNetworkChanged()
+                }
+            }
+        }
+        try {
+            cm.registerNetworkCallback(request, callback)
+            connectivity = cm
+            networkCallback = callback
+        } catch (_: Exception) {
+            // Ağ izleyici kurulamazsa tünel çalışmaya devam eder.
+        }
+    }
+
+    private fun stopNetworkMonitor() {
+        val cm = connectivity
+        val callback = networkCallback
+        if (cm != null && callback != null) {
+            try {
+                cm.unregisterNetworkCallback(callback)
+            } catch (_: Exception) {
+            }
+        }
+        connectivity = null
+        networkCallback = null
+        lastUnderlyingNetwork = null
     }
 
     /* -------------------------------------------------------- hev izleyici */

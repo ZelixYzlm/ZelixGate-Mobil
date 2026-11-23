@@ -460,6 +460,19 @@ object ZelixRuntime {
         broadcast("settings:changed", store().get())
     }
 
+    /**
+     * Wi-Fi ↔ mobil veri geçişinde çağrılır (ZelixVpnService ağ izleyicisi).
+     * Eski ağa ait DNS cevapları yeni ağda ölü IP'ler döndürebildiği için
+     * önbellek temizlenir; DoH geri çekilmesi de sıfırlanır.
+     */
+    fun onUnderlyingNetworkChanged() {
+        try {
+            proxy0?.onNetworkChanged()
+        } catch (_: Exception) {
+        }
+        pushLog("info", "Ağ değişti; DNS önbelleği temizlendi")
+    }
+
     /** MainActivity onActivityResult sonucu. */
     fun onVpnConsent(granted: Boolean) {
         if (granted) return

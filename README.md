@@ -2,7 +2,7 @@
 
 **ZelixGate**, Android cihazlarda çalışan; parçalama (split) tabanlı DPI aşma, DNS-over-HTTPS (DoH), reklam engelleme ve isteğe bağlı SOCKS5 üst vekil özelliklerini tek bir VPN tünelinde birleştiren bir ağ aracıdır. Masaüstü ZelixGate deneyiminin Android sürümüdür.
 
-> **Sürüm:** 1.0.2 (versionCode 1020)  
+> **Sürüm:** 1.0.3 (versionCode 1030)  
 > **Paket adı:** `com.zelixsec.app`  
 > **Minimum Android:** 7.0 (API 24)  
 > **Hedef Android:** 14 (API 34)
@@ -15,7 +15,15 @@ En son APK için:
 
 APK'yı indirdikten sonra dosyayı açın. Android, bilinmeyen kaynaklardan kurulum için izin isteyecektir. Kurulumdan sonra ilk bağlantıda Android'in **VPN izni** onayını vermeniz gerekir.
 
-## Sürüm 1.0.2 yenilikleri
+## Sürüm 1.0.3 yenilikleri
+
+- **Mobil veri ve Wi-Fi bağlantı hatası düzeltildi.** Android'in "Özel DNS (otomatik)" modunda VPN DNS sunucusuna (`198.18.0.2:853`) yaptığı DoT denemesi artık 10 saniye timeout'a takılmıyor; anında reddedilip UDP/TCP 53 üzerinden DoH yanıtına düşülüyor. Bu, mobil veride ve bazı Wi-Fi ağlarında görülen `Bağlantı kurulamadı` / `SOCKS CONNECT başarısız` hatalarının ana nedeniydi.
+- **DoH sağlayıcı yedeği.** Cloudflare'e erişilemediğinde Google ve Quad9 DoH sunucuları denenecek; üçüne de ulaşılamazsa 60 saniye boyunca sistem DNS'ine hızlı geri dönüş yapılacak. Böylece her DNS sorgusunda 4 saniyelik bekleme oluşmayacak.
+- **Ağ değişimi desteği.** Wi-Fi ile mobil veri arasında geçiş yapıldığında DNS önbelleği otomatik temizleniyor; eski ağa ait ölü IP'ler yeni bağlantıları kilitlemiyor.
+- **Daha temiz günlük.** Tünel kapatılırken oluşan beklenen `Socket is closed` mesajları artık hata olarak gösterilmiyor.
+- Sürüm numarası **1.0.3** (versionCode 1030). 1.0.2 ile aynı imza anahtarı kullanıldığı için doğrudan üzerine kurulabilir.
+
+## Sürüm 1.0.2 yenilikleri (önceki sürüm)
 
 - **Android 14 tünel hatası düzeltildi.** `Starting FGS without a type` hatasına neden olan ön plan servisi, Android 14 için `specialUse` türü ve `FOREGROUND_SERVICE_SPECIAL_USE` izniyle başlatılıyor.
 - **ZelixSec → ZelixGate.** Uygulama adı, arayüz, bildirimler ve tüm görünen metinler ZelixGate olarak güncellendi.

@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * ZelixGate - arayüz mantığı (v1.0.2)
+ * ZelixGate - arayüz mantığı (v1.0.3)
  * Sekmeli ayarlar · 12 renk teması · dil seçimi (23 dil) · reklam engelleyici ·
  * uygulama içi güncelleme. Tüm ağ işleri ana süreçtedir; burada yalnızca
  * görüntüleme + IPC çağrıları var.
@@ -19,7 +19,7 @@
     systemProxy: null,
     battery: null,
     platform: '',
-    version: '1.0.2',
+    version: '1.0.3',
     logs: [],
     lang: 'tr',
     update: null,
@@ -286,8 +286,8 @@
     Object.assign(state, data);
     state.lang = state.settings?.app?.language || state.lang || 'tr';
     $('platformBadge').textContent = PLATFORM_LABEL[state.platform] || state.platform || '—';
-    $('versionLabel').textContent = state.version || '1.0.2';
-    $('aboutVersion').textContent = state.version || '1.0.2';
+    $('versionLabel').textContent = state.version || '1.0.3';
+    $('aboutVersion').textContent = state.version || '1.0.3';
     document.documentElement.lang = state.lang;
     I18N.apply(state.lang);
     applyAppearance();
@@ -990,7 +990,7 @@
       systemProxy: { applied: false },
       update: {
         phase: 'up-to-date',
-        currentVersion: '1.0.2',
+        currentVersion: '1.0.3',
         latest: null,
         notes: '',
         progress: { received: 0, total: 0, percent: 0 },
@@ -998,7 +998,7 @@
       },
       battery: { optimized: false, ignoring: true, percent: null },
       platform: 'linux',
-      version: '1.0.2',
+      version: '1.0.3',
     };
     const emit = (kind) => (cb) => {
       listeners[kind].push(cb);
