@@ -1,11 +1,16 @@
 package com.zelixsec.app.update
 
 import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.net.URL
 import java.security.MessageDigest
 import javax.net.ssl.HttpsURLConnection
@@ -43,12 +48,19 @@ class ZelixUpdateService(
     }
 
     interface Installer {
-        /** İndirilmiş APK'yı paket kurucuyla açar. */
-        fun installApk(file: File, downloadUrl: String)
+        /** İndirilmiş APK'yı paket kurucuyla açar; kurulum ekranı açıldıysa true döner. */
+        fun installApk(file: File, downloadUrl: String): Boolean
     }
 
     var installer: Installer? = null
     var listener: Listener? = null
+
+    /**
+     * Motor çalışırken yerel SOCKS5 bağlantı noktasını döner. Doğrudan indirme
+     * başarısız olursa (bazı ağlarda release-assets.githubusercontent.com
+     * engellenebiliyor) indirme bu tünel üzerinden yeniden denenir.
+     */
+    var proxyPortProvider: (() -> Int?)? = null
 
     private var currentVersion: String = currentVersion
     var manifestUrl: String = manifestUrl.trim().ifEmpty { RELEASES_URL }
@@ -60,6 +72,8 @@ class ZelixUpdateService(
     private var notes = ""
     private var downloadUrl: String? = null
     private var expectedSha256: String? = null
+    private var expectedTotal: Long = 0L
+    private var releaseUrl: String? = null
     private var publishedAt: String? = null
     private var checkedAt: String? = null
     private var progress = JSONObject().put("received", 0).put("total", 0).put("percent", 0)
@@ -78,6 +92,7 @@ class ZelixUpdateService(
             .put("latest", latest ?: JSONObject.NULL)
             .put("notes", notes)
             .put("downloadUrl", downloadUrl ?: JSONObject.NULL)
+            .put("releaseUrl", releaseUrl ?: JSONObject.NULL)
             .put("manifestUrl", manifestUrl)
             .put("checkedAt", checkedAt ?: JSONObject.NULL)
             .put("publishedAt", publishedAt ?: JSONObject.NULL)
@@ -109,6 +124,8 @@ class ZelixUpdateService(
             notes = manifest.notes
             downloadUrl = manifest.downloadUrl
             expectedSha256 = manifest.sha256?.takeIf { it.isNotEmpty() }
+            expectedTotal = manifest.assetSize
+            releaseUrl = manifest.releaseUrl
             publishedAt = manifest.publishedAt?.takeIf { it.isNotEmpty() }
             checkedAt = isoNow()
 
@@ -131,6 +148,8 @@ class ZelixUpdateService(
                 latest = null
                 notes = ""
                 downloadUrl = null
+                expectedTotal = 0L
+                releaseUrl = null
                 phase = "up-to-date"
                 say("GitHub'da yayınlanmış sürüm yok; sürüm güncel kabul edildi", "debug")
             } else {
@@ -152,14 +171,17 @@ class ZelixUpdateService(
         val url = downloadUrl ?: throw Exception("release'de APK dosyası yok")
         phase = "downloading"
         error = null
-        progress = JSONObject().put("received", 0).put("total", 0).put("percent", 0)
+        progress = JSONObject()
+            .put("received", 0)
+            .put("total", expectedTotal)
+            .put("percent", 0)
         file = null
         publish()
 
-        val updateDir = File(
-            context.getExternalFilesDir(null) ?: context.filesDir,
-            "update",
-        )
+        // APK'yı uygulamanın iç deposuna indir. Dış depodaki
+        // Android/data/... yolu bazı cihazlarda paket kurucu tarafından
+        // okunamıyor; iç depo + FileProvider en güvenilir yoldur.
+        val updateDir = File(context.filesDir, "update")
         updateDir.mkdirs()
         val dest = File(updateDir, "ZelixGate-Setup-${sanitizeName(latest ?: "guncelleme")}.apk")
         try {
@@ -168,12 +190,17 @@ class ZelixUpdateService(
         }
         try {
             val bytes = downloadFile(url, dest, expectedSha256)
+            verifyApk(dest)
             file = dest
             phase = "ready"
             say("Kurulum indirildi (${String.format(java.util.Locale.US, "%.1f", bytes / 1048576.0)} MB)")
         } catch (err: Exception) {
             phase = "error"
             error = err.message ?: "bilinmeyen hata"
+            try {
+                dest.delete()
+            } catch (_: Exception) {
+            }
             say("İndirme başarısız: $error", "error")
         }
         val status = getStatus()
@@ -191,11 +218,39 @@ class ZelixUpdateService(
         if (phase == "available") downloadAndPrepare()
         val apk = file ?: throw Exception("indirilmiş kurulum dosyası yok")
         if (phase != "ready") throw Exception("indirilmiş kurulum dosyası yok")
+        if (!apk.isFile || apk.length() <= 0L) {
+            phase = "error"
+            error = "kurulum dosyası bulunamadı veya boş"
+            publish()
+            throw Exception(error)
+        }
+
+        say("Kurulum ekranı açılıyor")
+        val opened = installer?.installApk(apk, downloadUrl ?: "") ?: false
+        if (!opened) {
+            // Örn. Android 8+ "Bilinmeyen uygulamalar" izni yok. Fazı ready
+            // bırak ki kullanıcı izni verdikten sonra tekrar deneyebilsin.
+            phase = "ready"
+            error = "Kurulum ekranı açılamadı. 'Bilinmeyen uygulamalar' iznini verip tekrar deneyin."
+            publish()
+            throw Exception(error)
+        }
         phase = "installing"
+        error = null
         publish()
-        say("Kurulum başlatıldı")
-        installer?.installApk(apk, downloadUrl ?: "")
         return getStatus().put("file", apk.absolutePath)
+    }
+
+    /**
+     * Kurulum ekranı açıldıktan sonra kullanıcı iptal edip uygulamaya
+     * dönerse faz "installing"de takılı kalmasın; tekrar denenebilsin.
+     */
+    @Synchronized
+    fun resetInstallPhase() {
+        if (phase != "installing") return
+        phase = "ready"
+        error = null
+        publish()
     }
 
     /* ------------------------------------------------------------ kaynak seçim */
@@ -206,6 +261,8 @@ class ZelixUpdateService(
         val downloadUrl: String?,
         val sha256: String?,
         val publishedAt: String?,
+        val assetSize: Long,
+        val releaseUrl: String?,
     )
 
     /** GitHub Releases API ya da klasik update.json'dan normalize edilmiş bilgi. */
@@ -236,6 +293,8 @@ class ZelixUpdateService(
                 downloadUrl = assetUrl?.takeIf { it.isNotEmpty() },
                 sha256 = null,
                 publishedAt = root.optString("published_at", "").trim(),
+                assetSize = assetSize,
+                releaseUrl = root.optString("html_url", "").trim().ifEmpty { null },
             )
         }
 
@@ -252,6 +311,10 @@ class ZelixUpdateService(
             downloadUrl = download,
             sha256 = root.optString("sha256", "").ifEmpty { null },
             publishedAt = root.optString("publishedAt", "").ifEmpty { root.optString("date", "") },
+            assetSize = root.optLong("size", 0L),
+            releaseUrl = root.optString("releaseUrl", "")
+                .ifEmpty { root.optString("page", "") }
+                .ifEmpty { null },
         )
     }
 
@@ -313,8 +376,117 @@ class ZelixUpdateService(
         }
     }
 
-    /** 150ms aralıklarla progress yayınlayan, SHA-256 doğrulamalı indirme. */
+    /** İndirilen APK'nın paket adı ve imzası kurulu uygulamayla uyumlu mu? */
+    private fun verifyApk(apk: File) {
+        val flags = if (Build.VERSION.SDK_INT >= 28) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+        @Suppress("DEPRECATION")
+        val archive = context.packageManager.getPackageArchiveInfo(apk.absolutePath, flags)
+            ?: throw Exception("indirilen dosya geçerli bir APK değil")
+        if (archive.packageName != context.packageName) {
+            throw Exception("APK paket adı uyuşmuyor: ${archive.packageName}")
+        }
+        @Suppress("DEPRECATION")
+        val installed = context.packageManager.getPackageInfo(context.packageName, flags)
+        val archiveSig = signatureBytes(archive)
+        val installedSig = signatureBytes(installed)
+        if (archiveSig != null && installedSig != null && !archiveSig.contentEquals(installedSig)) {
+            throw Exception(
+                "APK imzası kurulu uygulamayla uyuşmuyor. Eski sürümü kaldırıp " +
+                    "bu APK'yı elle kurun (ayarlarınız sıfırlanır).",
+            )
+        }
+    }
+
+    private fun signatureBytes(info: PackageInfo): ByteArray? {
+        return if (Build.VERSION.SDK_INT >= 28) {
+            val signing = info.signingInfo ?: return null
+            val signers = if (signing.hasMultipleSigners()) {
+                signing.apkContentsSigners
+            } else {
+                signing.signingCertificateHistory
+            }
+            signers.firstOrNull()?.toByteArray()
+        } else {
+            @Suppress("DEPRECATION")
+            info.signatures?.firstOrNull()?.toByteArray()
+        }
+    }
+
+    /**
+     * 150 ms aralıklarla ilerleme yayınlayan, SHA-256 doğrulamalı indirme.
+     * Doğrudan bağlantı başarısız olursa (bazı ağlarda GitHub asset sunucusu
+     * engellenir) motorun yerel SOCKS5 tüneli üzerinden yeniden dener.
+     */
     private fun downloadFile(urlString: String, dest: File, expectedSha256: String?): Long {
+        val part = File(dest.parentFile, dest.name + ".part")
+        try {
+            if (part.exists()) part.delete()
+        } catch (_: Exception) {
+        }
+
+        val attempts = ArrayList<DownloadAttempt>()
+        attempts.add(DownloadAttempt("doğrudan", null))
+        val proxyPort = try {
+            proxyPortProvider?.invoke()
+        } catch (_: Exception) {
+            null
+        }
+        if (proxyPort != null && proxyPort > 0) {
+            attempts.add(
+                DownloadAttempt(
+                    "VPN/SOCKS",
+                    Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", proxyPort)),
+                ),
+            )
+        }
+
+        var lastError: Exception? = null
+        for ((index, attempt) in attempts.withIndex()) {
+            try {
+                if (index > 0) say("İndirme yeniden deneniyor (${attempt.label})...", "warn")
+                val bytes = downloadOnce(urlString, part, expectedSha256, attempt.proxy)
+                try {
+                    if (dest.exists()) dest.delete()
+                } catch (_: Exception) {
+                }
+                if (!part.renameTo(dest)) {
+                    part.copyTo(dest, overwrite = true)
+                    part.delete()
+                }
+                progress = JSONObject()
+                    .put("received", bytes)
+                    .put("total", bytes)
+                    .put("percent", 100)
+                listener?.onUpdateProgress(progress)
+                return bytes
+            } catch (err: Exception) {
+                lastError = err
+                try {
+                    part.delete()
+                } catch (_: Exception) {
+                }
+                say(
+                    "İndirme denemesi başarısız (${attempt.label}): ${err.message ?: "ağ"}",
+                    "warn",
+                )
+            }
+        }
+        throw lastError ?: Exception("indirme başarısız")
+    }
+
+    private class DownloadAttempt(val label: String, val proxy: Proxy?)
+
+    private fun downloadOnce(
+        urlString: String,
+        dest: File,
+        expectedSha256: String?,
+        proxy: Proxy?,
+    ): Long {
         var current = urlString
         var count = 0
         val conn: HttpURLConnection
@@ -322,13 +494,20 @@ class ZelixUpdateService(
             if (count > MAX_REDIRECTS) throw Exception("çok fazla yönlendirme")
             val u = URL(current)
             if (u.protocol != "https") throw Exception("yalnızca https bağlantısı desteklenir")
-            val c = u.openConnection() as HttpURLConnection
-            c.connectTimeout = 15000
-            c.readTimeout = 15000
+            val c = if (proxy == null) {
+                u.openConnection() as HttpURLConnection
+            } else {
+                u.openConnection(proxy) as HttpURLConnection
+            }
+            c.connectTimeout = 20000
+            c.readTimeout = 30000
             c.instanceFollowRedirects = false
             c.requestMethod = "GET"
             c.setRequestProperty("user-agent", "ZelixGate-Update/1.0")
             c.setRequestProperty("accept", "*/*")
+            // Sıkıştırma kapalı: Content-Length gerçek dosya boyutu olsun,
+            // yüzde hesabı ve boyut doğrulaması şaşmasın.
+            c.setRequestProperty("accept-encoding", "identity")
             val code = try {
                 c.connect()
                 c.responseCode
@@ -351,6 +530,9 @@ class ZelixUpdateService(
             conn = c
             break
         }
+
+        // Content-Length yoksa release'teki asset boyutuyla yüzde hesapla.
+        val declared = conn.contentLengthLong.takeIf { it > 0 } ?: expectedTotal
         var got = 0L
         try {
             val input = conn.inputStream
@@ -366,14 +548,16 @@ class ZelixUpdateService(
                         val now = System.currentTimeMillis()
                         if (now - lastEmit > 150) {
                             lastEmit = now
-                            val total = conn.contentLengthLong
+                            val total = if (declared > 0) declared else 0L
+                            val percent = if (total > 0) {
+                                ((got * 100) / total).toInt().coerceIn(0, 100)
+                            } else {
+                                0
+                            }
                             progress = JSONObject()
                                 .put("received", got)
                                 .put("total", total)
-                                .put(
-                                    "percent",
-                                    if (total > 0) ((got * 100) / total).toInt().coerceIn(0, 100) else 0,
-                                )
+                                .put("percent", percent)
                             listener?.onUpdateProgress(progress)
                         }
                     }
@@ -383,6 +567,10 @@ class ZelixUpdateService(
             throw Exception("indirme hatası: ${err.message ?: "ağ"}")
         } finally {
             disconnectQuiet(conn)
+        }
+
+        if (declared > 0 && got != declared) {
+            throw Exception("eksik indirme ($got / $declared bayt)")
         }
         val digest = hashBytes(dest, MessageDigest.getInstance("SHA-256"))
         val hex = digest.joinToString("") { String.format("%02x", it) }

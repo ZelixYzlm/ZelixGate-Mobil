@@ -9,6 +9,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -29,7 +30,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -129,8 +132,33 @@ object ZelixRuntime {
             }
         }
         updater.installer = object : ZelixUpdateService.Installer {
-            override fun installApk(file: File, downloadUrl: String) {
-                main.post { openInstallIntent(context, file) }
+            override fun installApk(file: File, downloadUrl: String): Boolean {
+                // Paket kurucu ve ayarlar ana thread'de açılmalı; sonucu bekleyip
+                // başarısızsa güncelleme fazını "ready" olarak geri bırakıyoruz.
+                val latch = CountDownLatch(1)
+                var opened = false
+                main.post {
+                    opened = openInstallIntent(context, file)
+                    latch.countDown()
+                }
+                try {
+                    latch.await(6, TimeUnit.SECONDS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                }
+                return opened
+            }
+        }
+        updater.proxyPortProvider = {
+            // Yalnızca motor gerçekten çalışıyorsa yerel SOCKS5 tünelini kullan.
+            if (proxy0?.running == true) {
+                try {
+                    socks0?.start()
+                } catch (_: Exception) {
+                    null
+                }
+            } else {
+                null
             }
         }
         updater.configure(JSONObject().put("manifestUrl", st.get().optJSONObject("update")?.optString("manifestUrl", "") ?: ""))
@@ -567,17 +595,142 @@ object ZelixRuntime {
 
     /* ------------------------------------------------------------- güncelleme */
 
-    private fun openInstallIntent(context: Context, apk: File) {
-        try {
-            val uri = FileProvider.getUriForFile(context, "com.zelixsec.app.fileprovider", apk)
-            val intent = Intent(Intent.ACTION_VIEW)
-            intent.setDataAndType(uri, "application/vnd.android.package-archive")
-            intent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION,
+    private val pendingInstallLock = Any()
+
+    @Volatile
+    private var pendingInstallFile: File? = null
+
+    @Volatile
+    private var pendingInstallAt = 0L
+
+    /**
+     * İndirilen APK'yı paket kurucuya verir. Android 8+ için "Bilinmeyen
+     * uygulamalar" izni yoksa ayarları açar ve false döner; kullanıcı izni
+     * verip uygulamaya dönünce onActivityResumed() kurulumu otomatik başlatır.
+     */
+    private fun openInstallIntent(context: Context, apk: File): Boolean {
+        if (!apk.isFile || apk.length() <= 0L) {
+            pushLog("error", "Kurulum dosyası bulunamadı veya boş: ${apk.absolutePath}")
+            return false
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !context.packageManager.canRequestPackageInstalls()
+        ) {
+            synchronized(pendingInstallLock) {
+                pendingInstallFile = apk
+                pendingInstallAt = System.currentTimeMillis()
+            }
+            pushLog(
+                "warn",
+                "Kurulum için 'Bilinmeyen uygulamalar' izni gerekiyor; ayarlar açılıyor",
             )
-            context.startActivity(intent)
+            if (openUnknownSourcesSettings(context)) return false
+            pushLog("error", "Bilinmeyen uygulamalar ayarları açılamadı")
+            return false
+        }
+
+        val uri = try {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
         } catch (err: Exception) {
-            pushLog("error", "Kurulum dosyası açılamadı: ${err.message ?: "bilinmeyen"}")
+            pushLog("error", "Kurulum dosyası URI'si oluşturulamadı: ${err.message ?: "bilinmeyen"}")
+            return false
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = ClipData.newRawUri("ZelixGate güncelleme", uri)
+        }
+        // Bazı OEM paket kurucuları URI iznini yalnızca kendi paketlerine
+        // açıkça verildiğinde okuyabiliyor.
+        try {
+            val targets = context.packageManager.queryIntentActivities(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY,
+            )
+            for (target in targets) {
+                context.grantUriPermission(
+                    target.activityInfo.packageName,
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        } catch (_: Exception) {
+        }
+
+        return try {
+            context.startActivity(intent)
+            pushLog("info", "Kurulum ekranı açıldı: ${apk.name}")
+            true
+        } catch (err: Exception) {
+            pushLog("error", "Kurulum ekranı açılamadı: ${err.message ?: err.javaClass.simpleName}")
+            // Eski cihazlar için ikinci yol.
+            try {
+                @Suppress("DEPRECATION")
+                val fallback = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                    data = uri
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(fallback)
+                pushLog("info", "Kurulum ekranı (yedek yol) açıldı")
+                true
+            } catch (err2: Exception) {
+                pushLog(
+                    "error",
+                    "Kurulum ekranı (yedek yol) açılamadı: ${err2.message ?: "bilinmeyen"}",
+                )
+                false
+            }
+        }
+    }
+
+    private fun openUnknownSourcesSettings(context: Context): Boolean {
+        val candidates = listOf(
+            Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}"),
+            ),
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}"),
+            ),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+        for (intent in candidates) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(intent)
+                return true
+            } catch (_: Exception) {
+            }
+        }
+        return false
+    }
+
+    /** MainActivity.onResume -> izin verildiyse bekleyen kurulumu açar. */
+    fun onActivityResumed() {
+        // Kullanıcı kurulum ekranını iptal edip uygulamaya döndüyse faz
+        // "installing"de takılı kalmasın; "Güncelle" butonu geri gelsin.
+        updater0?.let { updater ->
+            if (updater.getStatus().optString("phase") == "installing") {
+                updater.resetInstallPhase()
+                broadcast("update:status", updater.getStatus())
+            }
+        }
+        val apk = synchronized(pendingInstallLock) { pendingInstallFile } ?: return
+        if (System.currentTimeMillis() - pendingInstallAt < 800L) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !ctx().packageManager.canRequestPackageInstalls()
+        ) {
+            return
+        }
+        synchronized(pendingInstallLock) {
+            if (pendingInstallFile === apk) pendingInstallFile = null
+        }
+        main.post {
+            if (!openInstallIntent(ctx(), apk)) {
+                pushLog("warn", "Kurulum otomatik başlatılamadı; Güncelle sekmesinden tekrar deneyin")
+            }
         }
     }
 
@@ -929,20 +1082,29 @@ object ZelixRuntime {
     private fun invokeUpdateInstall(): JSONObject {
         return try {
             val updater = updater()
-            val status = updater.getStatus()
-            val phaseNow = status.optString("phase")
-            val latestNow = status.optString("latest", "")
+            var status = updater.getStatus()
+            var phase = status.optString("phase")
 
-            if (phaseNow == "up-to-date") {
+            if (phase == "installing") {
+                return JSONObject().put("ok", true).put("status", status)
+            }
+            if (phase == "up-to-date") {
                 return JSONObject().put("ok", false).put("error", "Zaten en güncel sürümdesiniz")
             }
-            if (phaseNow == "error" && latestNow.isEmpty()) {
-                val fresh = updater.check(true)
-                if (fresh.optString("phase") == "up-to-date") {
-                    return JSONObject().put("ok", false).put("error", "Zaten en güncel sürümdesiniz")
-                }
+            // idle / error / checking: önce taze kontrol. available/ready ise
+            // kontrolü atla; doğrudan indir/kur.
+            if (phase != "available" && phase != "ready") {
+                status = updater.check(true)
+                phase = status.optString("phase")
             }
-            if (updater.getStatus().optString("phase") != "ready") {
+            if (phase == "up-to-date") {
+                return JSONObject().put("ok", false).put("error", "Zaten en güncel sürümdesiniz")
+            }
+            if (phase != "available" && phase != "ready") {
+                return JSONObject().put("ok", false)
+                    .put("error", status.optString("error", "Güncelleme bulunamadı"))
+            }
+            if (phase == "available") {
                 updater.downloadAndPrepare()
             }
             broadcast("update:status", updater.getStatus())

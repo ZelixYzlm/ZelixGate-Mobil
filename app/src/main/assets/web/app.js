@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * ZelixGate - arayüz mantığı (v1.0.3)
+ * ZelixGate - arayüz mantığı (v1.0.4)
  * Sekmeli ayarlar · 12 renk teması · dil seçimi (23 dil) · reklam engelleyici ·
  * uygulama içi güncelleme. Tüm ağ işleri ana süreçtedir; burada yalnızca
  * görüntüleme + IPC çağrıları var.
@@ -19,7 +19,7 @@
     systemProxy: null,
     battery: null,
     platform: '',
-    version: '1.0.3',
+    version: '1.0.4',
     logs: [],
     lang: 'tr',
     update: null,
@@ -286,8 +286,8 @@
     Object.assign(state, data);
     state.lang = state.settings?.app?.language || state.lang || 'tr';
     $('platformBadge').textContent = PLATFORM_LABEL[state.platform] || state.platform || '—';
-    $('versionLabel').textContent = state.version || '1.0.3';
-    $('aboutVersion').textContent = state.version || '1.0.3';
+    $('versionLabel').textContent = state.version || '1.0.4';
+    $('aboutVersion').textContent = state.version || '1.0.4';
     document.documentElement.lang = state.lang;
     I18N.apply(state.lang);
     applyAppearance();
@@ -675,6 +675,15 @@
     const ready = u.phase === 'ready';
     $('updateInstallBtn').classList.toggle('hidden', !ready);
 
+    const progress = u.progress || {};
+    const percent = Math.max(0, Math.min(100, Math.round(Number(progress.percent) || 0)));
+    const received = Number(progress.received) || 0;
+    const total = Number(progress.total) || 0;
+    const receivedText =
+      received > 0
+        ? ` · ${formatBytes(received)}${total > 0 ? ` / ${formatBytes(total)}` : ''}`
+        : '';
+
     const statusText = $('updateStatusText');
     statusText.textContent =
       u.phase === 'up-to-date'
@@ -682,7 +691,7 @@
         : u.phase === 'available'
           ? t2('update.available', { v: u.latest || '' })
           : u.phase === 'downloading'
-            ? t2('update.downloading', { p: Math.round(u.progress?.percent || 0) })
+            ? `${t2('update.downloading', { p: percent })}${receivedText}`
             : u.phase === 'ready'
               ? t2('update.ready')
               : u.phase === 'installing'
@@ -692,7 +701,7 @@
                   : '';
 
     $('updateProgressWrap').classList.toggle('hidden', u.phase !== 'downloading');
-    $('updateProgressFill').style.width = `${Math.round(u.progress?.percent || 0)}%`;
+    $('updateProgressFill').style.width = `${percent}%`;
 
     const notesWrap = $('updateNotesWrap');
     if (u.notes && (u.phase === 'available' || u.phase === 'ready')) {
@@ -901,9 +910,13 @@
       });
     }
     if (window.zelix.onUpdateProgress) {
-      window.zelix.onUpdateProgress((progress) =>
-        $('updateProgressFill').style.setProperty('width', `${Math.round(progress?.percent || 0)}%`),
-      );
+      window.zelix.onUpdateProgress((progress) => {
+        // Yalnızca indirme sürerken uygula; geç gelen bir olay "ready"
+        // fazını yeniden "downloading" yapmasın.
+        if (!state.update || state.update.phase !== 'downloading') return;
+        state.update = { ...state.update, progress };
+        renderUpdateUI();
+      });
     }
 
     // Uygulama öne geldiğinde pil/güncelleme durumunu tazele
@@ -990,7 +1003,7 @@
       systemProxy: { applied: false },
       update: {
         phase: 'up-to-date',
-        currentVersion: '1.0.3',
+        currentVersion: '1.0.4',
         latest: null,
         notes: '',
         progress: { received: 0, total: 0, percent: 0 },
@@ -998,7 +1011,7 @@
       },
       battery: { optimized: false, ignoring: true, percent: null },
       platform: 'linux',
-      version: '1.0.3',
+      version: '1.0.4',
     };
     const emit = (kind) => (cb) => {
       listeners[kind].push(cb);

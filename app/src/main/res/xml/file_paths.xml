@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Güncelleme APK'sı: getExternalFilesDir()/update (ZelixUpdateService) -->
+    <!-- Eski sürümlerin indirdiği konum: getExternalFilesDir()/update -->
     <external-files-path
         name="update"
-        path="." />
-    <!-- Deneme yedek konum: filesDir/update -->
+        path="update/" />
+    <!-- Güncel konum: filesDir/update (ZelixUpdateService) -->
     <files-path
         name="update_internal"
-        path="." />
+        path="update/" />
 </paths>

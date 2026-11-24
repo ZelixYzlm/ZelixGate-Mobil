@@ -170,10 +170,10 @@
       'update.failed': 'Kontrol başarısız',
       'update.notes': 'Yenilikler',
       'update.installNote':
-        'Kurulum dosyası arka planda indirilir ve sessizce kurulur; uygulama kapanır ve yeni sürüm açılır.',
+        'Güncelleme indirilir, ardından Android kurulum ekranı açılır. Onayladığınızda uygulama güncellenir. İlk seferde "Bilinmeyen uygulamalar" izni istenebilir.',
       'update.downloading': 'İndiriliyor… %{p}',
       'update.ready': 'İndirildi, kuruluma hazır',
-      'update.installing': 'Kuruluyor, uygulama kapanacak…',
+      'update.installing': 'Kurulum ekranı açılıyor…',
       'update.lastCheck': 'Son kontrol',
       'how.title': 'Nasıl çalışır?',
       'how.p1':
@@ -350,10 +350,10 @@
       'update.failed': 'Check failed',
       'update.notes': "What's new",
       'update.installNote':
-        'The installer is downloaded in the background and applied silently; the app closes and the new version opens.',
+        "The update is downloaded, then Android's installer opens. Confirm there to update. You may need to allow \"Install unknown apps\" the first time.",
       'update.downloading': 'Downloading… %{p}',
       'update.ready': 'Downloaded, ready to install',
-      'update.installing': 'Installing, the app will close…',
+      'update.installing': 'Opening the installer…',
       'update.lastCheck': 'Last check',
       'how.title': 'How does it work?',
       'how.p1':

@@ -24,9 +24,9 @@ android {
         applicationId "com.zelixsec.app"
         minSdk 24
         targetSdk 34
-        // versionCode her sürümde artırılır; 1.0.2 (1020) üzerine kurulabilir.
-        versionCode 1030
-        versionName "1.0.3"
+        // versionCode her sürümde artırılır; 1.0.3 (1030) üzerine kurulabilir.
+        versionCode 1040
+        versionName "1.0.4"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

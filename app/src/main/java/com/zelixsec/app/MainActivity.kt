@@ -181,6 +181,13 @@ class MainActivity : Activity() {
 
     /* ----------------------------------------------------------------- yaşam */
 
+    override fun onResume() {
+        super.onResume()
+        // "Bilinmeyen uygulamalar" izni verilip geri dönüldüyse bekleyen
+        // güncelleme kurulumunu otomatik aç.
+        ZelixRuntime.onActivityResumed()
+    }
+
     override fun onBackPressed() {
         // Masaüstündeki tray'i kestirme davranışı: arka plana in, kapatma.
         moveTaskToBack(true)
