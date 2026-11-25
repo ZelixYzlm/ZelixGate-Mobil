@@ -2,7 +2,7 @@
 
 **ZelixGate**, Android cihazlarda çalışan; parçalama (split) tabanlı DPI aşma, DNS-over-HTTPS (DoH), reklam engelleme ve isteğe bağlı SOCKS5 üst vekil özelliklerini tek bir VPN tünelinde birleştiren bir ağ aracıdır. Masaüstü ZelixGate deneyiminin Android sürümüdür.
 
-> **Sürüm:** 1.0.4 (versionCode 1040)  
+> **Sürüm:** 1.0.5 (versionCode 1050)  
 > **Paket adı:** `com.zelixsec.app`  
 > **Minimum Android:** 7.0 (API 24)  
 > **Hedef Android:** 14 (API 34)
@@ -15,7 +15,15 @@ En son APK için:
 
 APK'yı indirdikten sonra dosyayı açın. Android, bilinmeyen kaynaklardan kurulum için izin isteyecektir. Kurulumdan sonra ilk bağlantıda Android'in **VPN izni** onayını vermeniz gerekir.
 
-## Sürüm 1.0.4 yenilikleri
+## Sürüm 1.0.5 yenilikleri
+
+- **Ana sayfa sadeleştirildi.** Gecikme, aktif bağlantı, indirilen/yüklenen veri, DPI sıfırlama şüphesi, engellenen reklam, son bölme, son hedefler ve olay günlüğü artık ana sayfada değil; **Ayarlar → Tüm Bilgiler** sekmesinde (ilk sekme) toplandı. Ana sayfada bağlantı alanı ve teşhis raporu kaldı.
+- **Teşhis akışı korundu.** "Teşhis çalıştır" hâlâ sonucu ana sayfadaki teşhis kartında gösteriyor.
+- **Bağlantı butonu kişiselleştirildi.** Görünüm sekmesinden buton simgesi seçilebiliyor: **Güç**, **Kalkan + tik** (bağlanınca logodaki gibi tik çizilir), **Kilit** (bağlanınca açılır) ve **Enerji**.
+- **Buton animasyonları.** Görünüm sekmesinden **Halka**, **Nabız**, **Yörünge** veya **Işıma** seçilebiliyor; seçim canlı **Önizleme** panelinde anında görünüyor ve butona basınca kısa bir dokunma animasyonu oynuyor.
+- Sürüm numarası **1.0.5** (versionCode 1050). 1.0.4 ile aynı imza anahtarı kullanıldığı için doğrudan üzerine kurulabilir; 1.0.4'ten itibaren uygulama içi güncelleme test edilebilir.
+
+## Sürüm 1.0.4 yenilikleri (önceki sürüm)
 
 - **Uygulama içi güncelleme kurulumu düzeltildi.** Android 8+ için gerekli `REQUEST_INSTALL_PACKAGES` izni eklendi. "Bilinmeyen uygulamalar" izni yoksa ayarlar ekranı otomatik açılıyor; izin verip uygulamaya dönüldüğünde kurulum ekranı kendiliğinden başlatılıyor.
 - **APK artık iç depoya indiriliyor.** Eski sürümlerdeki `Android/data/...` dış depo yolu bazı cihazlarda paket kurucu tarafından okunamıyordu; yeni yol + FileProvider ile kurulum ekranı güvenilir şekilde açılıyor.

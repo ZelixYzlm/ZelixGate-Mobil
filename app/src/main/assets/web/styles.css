@@ -178,8 +178,8 @@ body.no-aurora .aurora {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 14px;
   overflow: auto;
   padding-right: 4px;
@@ -220,7 +220,7 @@ body.no-aurora .aurora {
 
 .hero {
   grid-column: 1;
-  grid-row: 1 / span 3;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -301,6 +301,33 @@ body.no-aurora .aurora {
   box-shadow: 0 0 0 1px var(--glow-soft), 0 18px 40px -22px var(--glow);
 }
 
+.power:active {
+  transform: scale(0.96);
+}
+
+.power-icon {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  transition: transform 0.25s ease;
+}
+
+.power-icon svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.power-halo {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
 .power-ring {
   position: absolute;
   inset: -8px;
@@ -313,20 +340,128 @@ body.no-aurora .aurora {
   mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
 }
 
-.hero.running .power {
+.power.is-on {
   color: var(--accent);
   border-color: transparent;
   box-shadow: 0 0 40px -6px var(--glow);
 }
 
-.hero.running .power-ring {
+.power.is-on .power-ring {
   opacity: 1;
+}
+
+/* --- buton simgeleri --- */
+
+.power-check {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  opacity: 0;
+  transition: stroke-dashoffset 0.5s ease 0.08s, opacity 0.25s ease;
+}
+
+.power.is-on .power-check {
+  stroke-dashoffset: 0;
+  opacity: 1;
+}
+
+.lock-shackle {
+  transform-origin: 17px 10px;
+  transition: transform 0.3s ease;
+}
+
+.power.is-on .lock-shackle {
+  transform: translateY(-2px) rotate(-18deg);
+}
+
+.power.is-on[data-style='energy'] .power-icon svg {
+  filter: drop-shadow(0 0 9px var(--glow));
+}
+
+.power.is-on[data-style='shield'] .power-icon svg {
+  filter: drop-shadow(0 0 10px var(--glow-soft));
+}
+
+/* --- seçilebilir animasyonlar --- */
+
+.power.is-on[data-anim='ring'] .power-ring {
   animation: spin 4s linear infinite;
+}
+
+.power.is-on[data-anim='pulse'] .power-ring {
+  animation: ring-pulse 1.9s ease-in-out infinite;
+}
+
+.power.is-on[data-anim='pulse'] .power-icon {
+  animation: icon-pulse 1.9s ease-in-out infinite;
+}
+
+.power.is-on[data-anim='orbit'] .power-halo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 0, var(--accent) 0 3.5px, transparent 4px);
+  animation: spin 3.2s linear infinite;
+}
+
+.power.is-on[data-anim='glow'] {
+  animation: power-glow 2.6s ease-in-out infinite;
+}
+
+.power.pressed .power-icon {
+  animation: power-tap 0.45s ease;
 }
 
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes ring-pulse {
+  0%,
+  100% {
+    transform: scale(0.97);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+@keyframes icon-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes power-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 22px -12px var(--glow);
+  }
+  50% {
+    box-shadow: 0 0 52px 0 var(--glow);
+  }
+}
+
+@keyframes power-tap {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.82);
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 
@@ -965,6 +1100,132 @@ body.no-aurora .aurora {
 .swatch.active {
   border-color: rgba(255, 255, 255, 0.85);
   box-shadow: 0 0 12px var(--glow);
+}
+
+/* ---------------------------------------------------- buton simge seçici */
+
+.power-picker,
+.power-anim-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.power-choice,
+.power-anim-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 6px 10px;
+  border-radius: 13px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  transition: 0.16s ease;
+}
+
+.power-choice:hover,
+.power-anim-choice:hover {
+  color: var(--text);
+  border-color: var(--stroke-strong);
+  transform: translateY(-1px);
+}
+
+.power-choice.active,
+.power-anim-choice.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--glow-soft);
+  box-shadow: 0 0 0 1px var(--glow-soft), 0 10px 26px -18px var(--glow);
+}
+
+.power-choice .preview,
+.power-anim-choice .anim-glyph {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+
+.power-choice .preview svg,
+.power-anim-choice .anim-glyph svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.power-choice-label {
+  line-height: 1.2;
+}
+
+.power-preview-card {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  background: radial-gradient(circle at 50% 12%, var(--glow-soft), rgba(255, 255, 255, 0.015) 60%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.power-preview-label {
+  align-self: flex-start;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.power-preview {
+  width: 96px;
+  height: 96px;
+  margin: 2px 0;
+  cursor: default;
+}
+
+.power-preview .power-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.power-preview-text {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* ------------------------------------------- Tüm Bilgiler (çekmece) */
+
+.drawer-panel .card {
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.drawer-panel .stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.drawer-panel .hosts {
+  max-height: 280px;
+}
+
+.drawer-panel .logs {
+  min-height: 210px;
+}
+
+.drawer-panel .log-console {
+  max-height: 230px;
 }
 
 input[type='range'] {

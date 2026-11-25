@@ -58,18 +58,21 @@
         <section class="card hero" id="heroCard">
           <div class="profiles" id="profileRow" role="tablist" aria-label="Hedef profilleri"></div>
 
-          <button class="power" id="powerBtn" aria-label="Bağlan / Kes">
+          <button class="power" id="powerBtn" data-style="power" data-anim="ring" aria-label="Bağlan / Kes">
             <span class="power-ring" aria-hidden="true"></span>
-            <svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true">
-              <path d="M12 3v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
-              <path
-                d="M7.4 6.2a7.4 7.4 0 1 0 9.2 0"
-                stroke="currentColor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                fill="none"
-              />
-            </svg>
+            <span class="power-halo" aria-hidden="true"></span>
+            <span class="power-icon" id="powerIcon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="44" height="44">
+                <path d="M12 3v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+                <path
+                  d="M7.4 6.2a7.4 7.4 0 1 0 9.2 0"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  fill="none"
+                />
+              </svg>
+            </span>
           </button>
 
           <div class="status-line">
@@ -95,40 +98,6 @@
           </div>
         </section>
 
-        <aside class="side">
-          <section class="card stats">
-            <div class="stat">
-              <span class="stat-label" data-i18n="stat.latency">Gecikme</span>
-              <span class="stat-value" id="statLatency">—</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label" data-i18n="stat.active">Aktif bağlantı</span>
-              <span class="stat-value" id="statActive">0</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label" data-i18n="stat.down">İndirilen</span>
-              <span class="stat-value" id="statDown">0 B</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label" data-i18n="stat.up">Yüklenen</span>
-              <span class="stat-value" id="statUp">0 B</span>
-            </div>
-            <div class="stat wide">
-              <span class="stat-label" data-i18n="stat.resets">DPI sıfırlama şüphesi</span>
-              <span class="stat-value" id="statResets">0</span>
-            </div>
-            <div class="stat wide">
-              <span class="stat-label" data-i18n="stat.ads">Engellenen reklam</span>
-              <span class="stat-value" id="statAds">0</span>
-            </div>
-          </section>
-
-          <section class="card last-split">
-            <h2 data-i18n="last.title">Son bölme</h2>
-            <p class="mono" id="lastSplit" data-i18n="last.none">Henüz paket bölünmedi</p>
-          </section>
-        </aside>
-
         <section class="card diag hidden" id="diagCard">
           <div class="card-head">
             <h2 data-i18n="diag.card">Teşhis raporu</h2>
@@ -136,31 +105,10 @@
           </div>
           <div class="diag-body" id="diagBody"></div>
         </section>
-
-        <section class="card hosts">
-          <div class="card-head">
-            <h2 data-i18n="hosts.title">Son hedefler</h2>
-            <span class="hint" id="hostCount">0 hedef</span>
-          </div>
-          <ul class="host-list" id="hostList">
-            <li class="empty" data-i18n="hosts.empty">Trafik bekleniyor…</li>
-          </ul>
-        </section>
-
-        <section class="card logs">
-          <div class="card-head">
-            <h2 data-i18n="logs.title">Günlük</h2>
-            <div class="log-tools">
-              <button class="btn tiny ghost" id="exportLogBtn" data-i18n="logs.export">Dışa aktar</button>
-              <button class="btn tiny ghost" id="clearLogBtn" data-i18n="logs.clear">Temizle</button>
-            </div>
-          </div>
-          <div class="log-console" id="logConsole" role="log" aria-live="polite"></div>
-        </section>
       </main>
 
       <footer class="footer">
-        <span class="footer-brand">ZelixGate <b id="versionLabel">1.0.4</b><span class="footer-dot"> · </span><span data-i18n="brand.sub">DPI atlatma ağ geçidi</span></span>
+        <span class="footer-brand">ZelixGate <b id="versionLabel">1.0.5</b><span class="footer-dot"> · </span><span data-i18n="brand.sub">DPI atlatma ağ geçidi</span></span>
         <span class="footer-author">ZelixYzlm — Emir Özer</span>
       </footer>
     </div>
@@ -175,7 +123,8 @@
 
       <div class="drawer-layout">
         <nav class="drawer-nav" aria-label="Ayarlar sekmeleri">
-          <button class="drawer-tab active" data-tab="general" type="button"><span class="tab-ico">⚙</span><span data-i18n="tab.general">Genel</span></button>
+          <button class="drawer-tab active" data-tab="allinfo" type="button"><span class="tab-ico">📊</span><span data-i18n="tab.allinfo">Tüm Bilgiler</span></button>
+          <button class="drawer-tab" data-tab="general" type="button"><span class="tab-ico">⚙</span><span data-i18n="tab.general">Genel</span></button>
           <button class="drawer-tab" data-tab="engine" type="button"><span class="tab-ico">🛡</span><span data-i18n="tab.engine">Motor</span></button>
           <button class="drawer-tab" data-tab="dns" type="button"><span class="tab-ico">🌐</span><span data-i18n="tab.dns">DNS</span></button>
           <button class="drawer-tab" data-tab="adblock" type="button"><span class="tab-ico">🚫</span><span data-i18n="tab.adblock">Reklam</span></button>
@@ -187,8 +136,66 @@
         </nav>
 
         <div class="drawer-body">
+          <!-- TÜM BİLGİLER (ana sayfadan taşındı) -->
+          <div class="drawer-panel active" data-panel="allinfo">
+            <h3 data-i18n="allinfo.title">Canlı bilgiler</h3>
+
+            <section class="card stats">
+              <div class="stat">
+                <span class="stat-label" data-i18n="stat.latency">Gecikme</span>
+                <span class="stat-value" id="statLatency">—</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label" data-i18n="stat.active">Aktif bağlantı</span>
+                <span class="stat-value" id="statActive">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label" data-i18n="stat.down">İndirilen</span>
+                <span class="stat-value" id="statDown">0 B</span>
+              </div>
+              <div class="stat">
+                <span class="stat-label" data-i18n="stat.up">Yüklenen</span>
+                <span class="stat-value" id="statUp">0 B</span>
+              </div>
+              <div class="stat wide">
+                <span class="stat-label" data-i18n="stat.resets">DPI sıfırlama şüphesi</span>
+                <span class="stat-value" id="statResets">0</span>
+              </div>
+              <div class="stat wide">
+                <span class="stat-label" data-i18n="stat.ads">Engellenen reklam</span>
+                <span class="stat-value" id="statAds">0</span>
+              </div>
+            </section>
+
+            <section class="card last-split">
+              <h2 data-i18n="last.title">Son bölme</h2>
+              <p class="mono" id="lastSplit" data-i18n="last.none">Henüz paket bölünmedi</p>
+            </section>
+
+            <section class="card hosts">
+              <div class="card-head">
+                <h2 data-i18n="hosts.title">Son hedefler</h2>
+                <span class="hint" id="hostCount">0 hedef</span>
+              </div>
+              <ul class="host-list" id="hostList">
+                <li class="empty" data-i18n="hosts.empty">Trafik bekleniyor…</li>
+              </ul>
+            </section>
+
+            <section class="card logs">
+              <div class="card-head">
+                <h2 data-i18n="logs.title">Günlük</h2>
+                <div class="log-tools">
+                  <button class="btn tiny ghost" id="exportLogBtn" data-i18n="logs.export">Dışa aktar</button>
+                  <button class="btn tiny ghost" id="clearLogBtn" data-i18n="logs.clear">Temizle</button>
+                </div>
+              </div>
+              <div class="log-console" id="logConsole" role="log" aria-live="polite"></div>
+            </section>
+          </div>
+
           <!-- GENEL -->
-          <div class="drawer-panel active" data-panel="general">
+          <div class="drawer-panel" data-panel="general">
             <label class="field">
               <span data-i18n="general.language">Uygulama dili</span>
               <select id="languageSelect"></select>
@@ -354,6 +361,24 @@
               <span class="switch-track"><span class="switch-thumb"></span></span>
               <span class="switch-label" data-i18n="view.aurora">Arka plan ışık halesi</span>
             </label>
+
+            <h3 data-i18n="view.powerStyleTitle">Güç düğmesi simgesi</h3>
+            <div class="power-picker" id="powerStyleGrid"></div>
+
+            <h3 data-i18n="view.powerAnimTitle">Düğme animasyonu</h3>
+            <div class="power-anim-grid" id="powerAnimGrid"></div>
+
+            <div class="power-preview-card">
+              <span class="power-preview-label" data-i18n="view.preview">Önizleme</span>
+              <div class="power power-preview is-on" id="powerPreview" data-style="power" data-anim="ring" aria-hidden="true">
+                <span class="power-ring" aria-hidden="true"></span>
+                <span class="power-halo" aria-hidden="true"></span>
+                <span class="power-icon" id="powerPreviewIcon" aria-hidden="true"></span>
+              </div>
+              <p class="power-preview-text" data-i18n="view.previewText">
+                Bağlanınca düğme seçtiğin simgeye bürünür ve animasyon oynar.
+              </p>
+            </div>
           </div>
 
           <!-- GÜNCELLEME -->
@@ -424,7 +449,7 @@
 
             <div class="about-row">
               <span data-i18n="about.version">Sürüm</span>
-              <b id="aboutVersion">1.0.4</b>
+              <b id="aboutVersion">1.0.5</b>
             </div>
             <div class="about-row">
               <span data-i18n="about.author">Geliştirici</span>

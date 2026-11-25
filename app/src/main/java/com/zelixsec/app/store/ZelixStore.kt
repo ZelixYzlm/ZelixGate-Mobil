@@ -89,7 +89,15 @@ object ZelixDefaults {
         )
         put("systemProxy", JSONObject().put("enabled", false).put("lastApplied", JSONObject.NULL))
         put("adblock", JSONObject().put("enabled", true).put("customBlocked", JSONArray()))
-        put("appearance", JSONObject().put("theme", "neon").put("opacity", 78).put("aurora", true))
+        put(
+            "appearance",
+            JSONObject()
+                .put("theme", "neon")
+                .put("opacity", 78)
+                .put("aurora", true)
+                .put("powerStyle", "power")
+                .put("powerAnimation", "ring"),
+        )
         put(
             "update",
             JSONObject()

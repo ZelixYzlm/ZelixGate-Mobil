@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * ZelixGate - arayüz mantığı (v1.0.4)
+ * ZelixGate - arayüz mantığı (v1.0.5)
  * Sekmeli ayarlar · 12 renk teması · dil seçimi (23 dil) · reklam engelleyici ·
  * uygulama içi güncelleme. Tüm ağ işleri ana süreçtedir; burada yalnızca
  * görüntüleme + IPC çağrıları var.
@@ -19,7 +19,7 @@
     systemProxy: null,
     battery: null,
     platform: '',
-    version: '1.0.4',
+    version: '1.0.5',
     logs: [],
     lang: 'tr',
     update: null,
@@ -28,11 +28,54 @@
   let lastLatency = null;
   let busy = false;
   let lastSplit = null;
-  let activeTab = 'general';
+  let activeTab = 'allinfo';
   let batteryDismissed = false;
   let updateBannerDismissed = false;
+  let powerPressTimer = null;
 
   const PLATFORM_LABEL = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
+
+  /* ---------------------------------------------------- bağlantı butonu */
+
+  const POWER_ICONS = {
+    power: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+      <path d="M7.4 6.2a7.4 7.4 0 1 0 9.2 0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none" />
+    </svg>`,
+    shield: `<svg viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M24 4 41 10v12c0 10.5-7.2 18.6-17 21-9.8-2.4-17-10.5-17-21V10L24 4Z" fill="currentColor" opacity="0.12" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+      <path class="power-check" d="M16.5 23.5l5.2 5.2 10.3-11" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>`,
+    lock: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path class="lock-shackle" d="M8 10V7.5a4 4 0 0 1 8 0V10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+      <rect x="5" y="10" width="14" height="10" rx="2.6" fill="currentColor" opacity="0.12" stroke="currentColor" stroke-width="2" />
+      <circle cx="12" cy="15" r="1.3" fill="currentColor" />
+    </svg>`,
+    energy: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M13 2 5.5 13.5H11L10 22l7.5-11.5H12L13 2Z" fill="currentColor" opacity="0.16" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+    </svg>`,
+  };
+  const POWER_ANIMS = ['ring', 'pulse', 'orbit', 'glow'];
+  const POWER_ANIM_GLYPHS = {
+    ring: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="7.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="3 5" />
+      <path d="M17.5 6.5 20 4M20 4h-3.4M20 4v3.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>`,
+    pulse: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.5 12h4l2.2-5.4 3.4 10.8 2.6-7.2 1.8 1.8h4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+    </svg>`,
+    orbit: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.85" />
+      <ellipse cx="12" cy="12" rx="9" ry="4.4" fill="none" stroke="currentColor" stroke-width="1.5" transform="rotate(-24 12 12)" />
+      <circle cx="19.4" cy="7.2" r="1.7" fill="currentColor" />
+    </svg>`,
+    glow: `<svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3.4" fill="currentColor" opacity="0.9" />
+      <g stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M12 2.6v2.6M12 18.8v2.6M2.6 12h2.6M18.8 12h2.6M5.3 5.3l1.9 1.9M16.8 16.8l1.9 1.9M18.7 5.3l-1.9 1.9M7.2 16.8l-1.9 1.9" />
+      </g>
+    </svg>`,
+  };
 
   /* -------------------------------------------------------------- temalar */
 
@@ -100,6 +143,29 @@
     const stops = document.querySelectorAll('#zg stop');
     if (stops[0]) stops[0].setAttribute('stop-color', c1);
     if (stops[1]) stops[1].setAttribute('stop-color', c2);
+
+    applyPowerStyle();
+  }
+
+  /** Ana ekrandaki büyük butonun simgesi + animasyonu (Görünüm sekmesi). */
+  function applyPowerStyle() {
+    const ap = state.settings?.appearance || {};
+    const style = POWER_ICONS[ap.powerStyle] ? ap.powerStyle : 'power';
+    const anim = POWER_ANIMS.includes(ap.powerAnimation) ? ap.powerAnimation : 'ring';
+    const targets = [
+      [$('powerIcon'), $('powerBtn')],
+      [$('powerPreviewIcon'), $('powerPreview')],
+    ];
+    for (const [icon, button] of targets) {
+      if (icon && icon.dataset.style !== style) {
+        icon.innerHTML = POWER_ICONS[style];
+        icon.dataset.style = style;
+      }
+      if (button) {
+        button.dataset.style = style;
+        button.dataset.anim = anim;
+      }
+    }
   }
 
   /* -------------------------------------------------------------- biçimde */
@@ -168,6 +234,8 @@
     const hero = $('heroCard');
 
     hero.classList.toggle('running', running);
+    $('powerBtn')?.classList.toggle('is-on', running);
+    $('powerPreview')?.classList.add('is-on');
 
     const dot = $('statusDot');
     dot.className = 'dot';
@@ -286,8 +354,8 @@
     Object.assign(state, data);
     state.lang = state.settings?.app?.language || state.lang || 'tr';
     $('platformBadge').textContent = PLATFORM_LABEL[state.platform] || state.platform || '—';
-    $('versionLabel').textContent = state.version || '1.0.4';
-    $('aboutVersion').textContent = state.version || '1.0.4';
+    $('versionLabel').textContent = state.version || '1.0.5';
+    $('aboutVersion').textContent = state.version || '1.0.5';
     document.documentElement.lang = state.lang;
     I18N.apply(state.lang);
     applyAppearance();
@@ -470,6 +538,8 @@
     $('updateManifestInput').value = s.update.manifestUrl || '';
     $('languageSelect').value = state.lang;
     renderThemeGrid();
+    renderPowerStyleGrid();
+    renderPowerAnimGrid();
   }
 
   function parseList(value) {
@@ -530,9 +600,13 @@
 
   function openDrawer(tab) {
     fillSettingsForm();
-    activateTab(tab || activeTab || 'general');
+    activateTab(tab || activeTab || 'allinfo');
     $('drawer').classList.remove('hidden');
     $('drawerBackdrop').classList.remove('hidden');
+    if ((tab || activeTab) === 'allinfo') {
+      const box = $('logConsole');
+      if (box) requestAnimationFrame(() => (box.scrollTop = box.scrollHeight));
+    }
   }
 
   function closeDrawer() {
@@ -541,6 +615,67 @@
   }
 
   /* ------------------------------------------------- görünüm (tema+renk) */
+
+  function renderPowerStyleGrid() {
+    const grid = $('powerStyleGrid');
+    if (!grid || !state.settings) return;
+    grid.innerHTML = '';
+    const current = state.settings.appearance?.powerStyle || 'power';
+    for (const id of ['shield', 'lock', 'energy', 'power']) {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.className = `power-choice${id === current ? ' active' : ''}`;
+      choice.dataset.power = id;
+      const preview = document.createElement('span');
+      preview.className = 'preview';
+      preview.innerHTML = POWER_ICONS[id];
+      const label = document.createElement('span');
+      label.className = 'power-choice-label';
+      label.textContent = t2(`view.power.style.${id}`);
+      choice.appendChild(preview);
+      choice.appendChild(label);
+      choice.addEventListener('click', () => {
+        state.settings = {
+          ...state.settings,
+          appearance: { ...state.settings.appearance, powerStyle: id },
+        };
+        renderPowerStyleGrid();
+        applyAppearance();
+        livePatch({ appearance: { powerStyle: id } });
+      });
+      grid.appendChild(choice);
+    }
+  }
+
+  function renderPowerAnimGrid() {
+    const grid = $('powerAnimGrid');
+    if (!grid || !state.settings) return;
+    grid.innerHTML = '';
+    const current = state.settings.appearance?.powerAnimation || 'ring';
+    for (const id of POWER_ANIMS) {
+      const choice = document.createElement('button');
+      choice.type = 'button';
+      choice.className = `power-anim-choice${id === current ? ' active' : ''}`;
+      choice.dataset.anim = id;
+      const glyph = document.createElement('span');
+      glyph.className = 'anim-glyph';
+      glyph.innerHTML = POWER_ANIM_GLYPHS[id];
+      const label = document.createElement('span');
+      label.textContent = t2(`view.power.anim.${id}`);
+      choice.appendChild(glyph);
+      choice.appendChild(label);
+      choice.addEventListener('click', () => {
+        state.settings = {
+          ...state.settings,
+          appearance: { ...state.settings.appearance, powerAnimation: id },
+        };
+        renderPowerAnimGrid();
+        applyPowerStyle();
+        livePatch({ appearance: { powerAnimation: id } });
+      });
+      grid.appendChild(choice);
+    }
+  }
 
   function renderThemeGrid() {
     const grid = $('themeGrid');
@@ -580,6 +715,8 @@
     I18N.apply(lang);
     $('languageSelect').value = lang;
     renderStatus();
+    renderPowerStyleGrid();
+    renderPowerAnimGrid();
     renderUpdateUI();
     livePatch({ app: { language: lang } });
   }
@@ -722,6 +859,14 @@
 
   function bind() {
     $('powerBtn').addEventListener('click', toggleEngine);
+    $('powerBtn').addEventListener('click', () => {
+      const button = $('powerBtn');
+      button.classList.remove('pressed');
+      void button.offsetWidth;
+      button.classList.add('pressed');
+      clearTimeout(powerPressTimer);
+      powerPressTimer = setTimeout(() => button.classList.remove('pressed'), 520);
+    });
     $('settingsBtn').addEventListener('click', () => openDrawer());
     $('updateBadge').addEventListener('click', () => openDrawer('update'));
     $('drawerClose').addEventListener('click', closeDrawer);
@@ -1003,7 +1148,7 @@
       systemProxy: { applied: false },
       update: {
         phase: 'up-to-date',
-        currentVersion: '1.0.4',
+        currentVersion: '1.0.5',
         latest: null,
         notes: '',
         progress: { received: 0, total: 0, percent: 0 },
@@ -1011,7 +1156,7 @@
       },
       battery: { optimized: false, ignoring: true, percent: null },
       platform: 'linux',
-      version: '1.0.4',
+      version: '1.0.5',
     };
     const emit = (kind) => (cb) => {
       listeners[kind].push(cb);
